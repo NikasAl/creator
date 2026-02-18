@@ -56,7 +56,7 @@ chunks = split_text_into_chunks(text, max_chars=500)
 ---
 
 #### 2. `config_loader.py`
-**Заменяет дублирование в 10+ файлах.**
+**Заменяет дублирование в 10+ файлов.**
 
 **Использование:**
 ```python
@@ -196,21 +196,59 @@ class MyProcessor(BaseProcessor):
 
 ---
 
+### ✅ Фаза 2: Завершённые миграции
+
+#### 4. `text_processors/correction_processor_v2.py`
+**До:** 376 строк с дублированием
+**После:** ~280 строк, использует BaseProcessor
+
+**Удалено:**
+- `load_config()` → ConfigLoader (~15 строк)
+- `split_text()` → utils.text_splitter (~15 строк)
+- Прямые API-вызовы → OpenRouterClient (~40 строк)
+
+#### 5. `text_processors/audiobook_processor_v2.py`
+**До:** 435 строк с дублированием
+**После:** ~280 строк, использует BaseProcessor
+
+**Удалено:**
+- `split_text_into_chunks()` → utils.text_splitter (~55 строк)
+- Прямые API-вызовы → OpenRouterClient (~50 строк)
+- Общая логика процессора → BaseProcessor (~50 строк)
+
+#### 6. `speech_processors/silero_v2.py`
+**До:** 183 строк с дублированием
+**После:** ~140 строк, использует BaseTTS
+
+**Удалено:**
+- `split_text_into_chunks()` → BaseTTS (~55 строк)
+- Объединение аудио → BaseTTS (~30 строк)
+
+#### 7. `speech_processors/sber_tts_v2.py`
+**До:** 173 строк с дублированием
+**После:** ~180 строк, использует BaseTTS
+
+**Удалено:**
+- `split_text_into_chunks()` → utils.text_splitter (~30 строк)
+- Общая логика → BaseTTS (~40 строк)
+
+---
+
 ## 📋 Оставшиеся задачи
 
-### Фаза 2 (продолжение)
+### Фаза 2 (завершение)
 
 1. **text_processors/:**
    - [x] `summary_processor_refactored.py` — пример миграции
-   - [ ] Миграция `correction_processor.py`
-   - [ ] Миграция `audiobook_processor.py`
-   - [ ] Миграция остальных процессоров
+   - [x] `correction_processor_v2.py` — миграция
+   - [x] `audiobook_processor_v2.py` — миграция
+   - [ ] Миграция остальных процессоров (опционально)
 
 2. **speech_processors/:**
    - [x] `base_tts.py` — базовый класс
-   - [x] `alibaba_tts_v2.py` — пример миграции
-   - [ ] Миграция `silero.py`
-   - [ ] Миграция `sber_api_synth.py`
+   - [x] `alibaba_tts_v2.py` — миграция
+   - [x] `silero_v2.py` — миграция
+   - [x] `sber_tts_v2.py` — миграция
 
 3. **video_processors/:**
    - [ ] Миграция на ConfigLoader
@@ -268,4 +306,22 @@ source lib/common/video.sh
 
 log_header "Мой пайплайн"
 # ... код ...
+```
+
+### Использование TTS
+
+```python
+from speech_processors import get_tts_engine, list_engines
+
+# Показать доступные движки
+print(list_engines())  # ['alibaba', 'silero', 'sber']
+
+# Создать TTS инстанс
+tts = get_tts_engine('alibaba', voice='Cherry')
+
+# Синтезировать файл
+result = tts.synthesize_file('input.txt', 'output.wav')
+if result.success:
+    print(f"Аудио создано: {result.output_file}")
+    print(f"Длительность: {result.duration_seconds:.1f} сек")
 ```
