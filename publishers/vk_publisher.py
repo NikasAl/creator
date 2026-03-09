@@ -48,7 +48,14 @@ class VKPublisher(BasePublisher):
                 with open(self.token_file, 'r', encoding='utf-8') as f:
                     token_data = json.load(f)
                     self.access_token = token_data.get('access_token', '')
-                    self.group_id = token_data.get('group_id', '')
+                    # Извлекаем group_id - может быть числом или строкой "club123456"
+                    group_id_raw = token_data.get('group_id', '')
+                    if group_id_raw:
+                        # Убираем префикс "club" если есть
+                        if isinstance(group_id_raw, str) and group_id_raw.startswith('club'):
+                            self.group_id = group_id_raw[4:]  # Убираем "club"
+                        else:
+                            self.group_id = str(group_id_raw)
             except Exception as e:
                 self.log_warning(f"Ошибка загрузки токена VK: {e}")
     
