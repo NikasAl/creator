@@ -4,8 +4,13 @@
 """
 
 import os
+import sys
 import json
 from pathlib import Path
+
+# Добавляем родительскую директорию в путь для импорта publishers
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from dotenv import load_dotenv
 
 def main():

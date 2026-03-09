@@ -2,14 +2,16 @@
 Модуль для публикации видео на различные видеохостинги и платформы
 """
 
-from .base_publisher import BasePublisher
-from .youtube_publisher import YouTubePublisher
-from .pipeline_analyzer import PipelineAnalyzer
+from .base_publisher import BasePublisher, VideoMetadata
+from .vk_publisher import VKPublisher
+from .pipeline_analyzer import PipelineAnalyzer, PipelineMetadata
 from .llm_metadata_generator import LLMMetadataGenerator
 
 __all__ = [
     'BasePublisher',
-    'YouTubePublisher', 
+    'VideoMetadata',
+    'VKPublisher',
     'PipelineAnalyzer',
+    'PipelineMetadata',
     'LLMMetadataGenerator'
 ]
