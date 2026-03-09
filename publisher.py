@@ -16,8 +16,10 @@ sys.path.append(str(Path(__file__).parent))
 from publishers.base_publisher import VideoMetadata
 from publishers.pipeline_analyzer import PipelineAnalyzer
 from publishers.llm_metadata_generator import LLMMetadataGenerator
-from publishers.youtube_publisher import YouTubePublisher
 from publishers.vk_publisher import VKPublisher
+
+# YouTube публикатор пока не реализован
+# from publishers.youtube_publisher import YouTubePublisher
 
 
 class VideoPublisher:
@@ -347,9 +349,23 @@ def main():
         print(f"❌ Ошибка: Пайплайн не найден: {args.pipeline_path}")
         return 1
     
+    # Определяем файл конфигурации
+    config_file = args.config
+    if not config_file:
+        # Ищем config.publisher.env в текущей директории
+        default_config = Path('config.publisher.env')
+        if default_config.exists():
+            config_file = str(default_config)
+        else:
+            # Ищем в директории скрипта
+            script_dir = Path(__file__).parent
+            script_config = script_dir / 'config.publisher.env'
+            if script_config.exists():
+                config_file = str(script_config)
+    
     try:
         # Создаем публикатор
-        publisher = VideoPublisher(args.config)
+        publisher = VideoPublisher(config_file)
         
         # Анализируем пайплайн
         print("🔍 Анализ пайплайна...")

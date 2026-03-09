@@ -35,9 +35,19 @@ class LLMMetadataGenerator:
         
     def _load_config(self) -> LLMConfig:
         """Загружает конфигурацию LLM"""
+        from dotenv import load_dotenv
+        from pathlib import Path
+        
+        # Если файл конфигурации указан - используем его
         if self.config_file and os.path.exists(self.config_file):
-            from dotenv import load_dotenv
-            load_dotenv(self.config_file)
+            load_dotenv(self.config_file, override=True)
+        else:
+            # Ищем config.publisher.env автоматически
+            for config_path in ['config.publisher.env', 
+                               Path(__file__).parent.parent / 'config.publisher.env']:
+                if Path(config_path).exists():
+                    load_dotenv(str(config_path), override=True)
+                    break
         
         api_key = os.getenv('OPENROUTER_API_KEY')
         if not api_key:
