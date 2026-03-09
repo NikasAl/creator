@@ -76,4 +76,4 @@ config.env
 config.publisher.env
 youtube*
 latest_silero_models.yml
-
+vk_token.json
