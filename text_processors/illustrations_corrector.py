@@ -167,15 +167,15 @@ def main(pipeline_path):
     while True:
         print("\n" + "="*70)
         print("СПИСОК ИЛЛЮСТРАЦИЙ:")
-        for ill in illustrations:
+        for i, ill in enumerate(illustrations, 1):
             length_status = "🟢" if len(ill['prompt']) < 800 else "🟡" if len(ill['prompt']) < 1500 else "🔴"
-            print(f"{ill['index']:2d}. [{length_status}] {ill['title']}")
+            print(f"{i:2d}. [{length_status}] {ill['title']}")
         print("="*70)
-        
+
         choice = input("\nВыберите номер для редактирования (0 для выхода): ").strip()
         if choice == "0":
             break
-        
+
         # Валидация выбора
         try:
             idx = int(choice) - 1
@@ -183,7 +183,7 @@ def main(pipeline_path):
                 raise ValueError
             current_ill = illustrations[idx]
         except (ValueError, TypeError):
-            print("❌ Неверный номер. Попробуйте снова (1-13)")
+            print(f"❌ Неверный номер. Введите число от 1 до {len(illustrations)}")
             continue
         
         # Редактирование выбранной иллюстрации

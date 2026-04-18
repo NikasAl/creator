@@ -4,12 +4,28 @@
 
 # Проверка аргументов
 if [ $# -eq 0 ]; then
-    echo "Использование: $0 <config_file>"
-    echo "Пример: $0 configs/poetry/example.conf"
-    exit 1
+    echo "Конфигурационный файл не указан. Запускаем интерактивное создание..."
+    echo ""
+    rm -f /tmp/.last_poetry_config
+    ./setup_poetry_manim_pipeline.sh
+
+    if [ -f /tmp/.last_poetry_config ]; then
+        CONFIG_FILE=$(cat /tmp/.last_poetry_config)
+        rm -f /tmp/.last_poetry_config
+        echo ""
+        echo "📎 Используем созданный конфиг: $CONFIG_FILE"
+    else
+        echo "❌ Не удалось получить конфигурационный файл после настройки"
+        exit 1
+    fi
+else
+    CONFIG_FILE="$1"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "❌ Файл конфигурации не найден: $CONFIG_FILE"
+        exit 1
+    fi
 fi
 
-CONFIG_FILE="$1"
 source "lib/manim/utils.sh"
 source "lib/manim/05_extra.sh"
 source "$CONFIG_FILE"
@@ -157,5 +173,5 @@ fi
 # 6. Маркетинг и Обложка
 # manim_step_promo
 # manim_step_pikabu
-manim_step_promo_exp "poetry_promo" "$INPUT_FILE" "promo_description.txt"
+manim_step_promo_exp "poetry_promo" "$INPUT_FILE" "$OUTPUT_DIR/promo_description.txt"
 export_cover "$OUTPUT_DIR" "$OUTPUT_DIR/video.mp4" "$OUTPUT_DIR/cover.jpg" "6"

@@ -132,3 +132,6 @@ EOF
 
 echo -e "\n${GREEN}🎉 Пайплайн настроен!${NC}"
 echo "Для запуска: ./process_poetry_manim.sh $CONFIG_FILE"
+
+# Сохраняем путь к конфигу для вызова из process_poetry_manim.sh (без параметров)
+echo "$CONFIG_FILE" > /tmp/.last_poetry_config
