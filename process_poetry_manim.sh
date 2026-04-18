@@ -155,7 +155,7 @@ else
     # Очистка каталога сборки
     rm -Rf media
     # Запуск Manim
-    manim -qm --disable_caching ../../manim_processors/manim_poetry_player.py PoetryScene
+    manim -ql --disable_caching ../../manim_processors/manim_poetry_player.py PoetryScene
 
     # можно использовать fzf для выбора результата (тогда убрать очистку сборки)
     VIDEO_RESULT=$(find media/videos -type f -name "PoetryScene.mp4" | head -1)
