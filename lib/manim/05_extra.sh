@@ -2,7 +2,7 @@
 
 # lib/manim/05_extra.sh
 # Подключаем cover_export (убедитесь, что он есть по этому пути, или перенесите код сюда)
-source "$(dirname "$0")/lib/manim/cover_export.sh" 2>/dev/null || true
+source "$(dirname "${BASH_SOURCE[0]}")/cover_export.sh" 2>/dev/null || true
 
 manim_step_promo() {
     local output_file="$OUTPUT_DIR/promo_description.txt"

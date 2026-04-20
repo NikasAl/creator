@@ -81,6 +81,17 @@ if [ -f "$INPUT_FILE" ] && [ -f "$TIMESTAMPS_FILE" ]; then
         echo ""
         echo "⏳ Файл транскрипции старый. Пропускаем коррекцию."
     fi
+
+    # Ручная коррекция таймстампов в Sublime Text
+    echo ""
+    read -p "🔧 Открыть sentence_timestamps.json для ручной коррекции? (y/n): " edit_ts
+    if [[ "$edit_ts" =~ ^[Yy] ]]; then
+        if command -v subl &> /dev/null; then
+            subl -w "$TIMESTAMPS_FILE"
+        elif command -v nano &> /dev/null; then
+            nano "$TIMESTAMPS_FILE"
+        fi
+    fi
 fi
 # ======================================================================
 
@@ -125,7 +136,7 @@ while true; do
 
     echo ""
     echo "👀 Проверьте изображения в: $OUTPUT_DIR/images и удалите плохие"
-    feh $OUTPUT_DIR/images
+    pcmanfm "$OUTPUT_DIR/images" &
     read -p "Все изображения устраивают? (y/n): " images_ok
     if [[ "$images_ok" =~ ^[Yy]$ ]]; then
         echo "✅ Все иллюстрации подтверждены. Переход к сборке видео..."
@@ -175,3 +186,18 @@ fi
 # manim_step_pikabu
 manim_step_promo_exp "poetry_promo" "$INPUT_FILE" "$OUTPUT_DIR/promo_description.txt"
 export_cover "$OUTPUT_DIR" "$OUTPUT_DIR/video.mp4" "$OUTPUT_DIR/cover.jpg" "6"
+
+# 7. Публикация
+echo ""
+if [ -f "$OUTPUT_DIR/video.mp4" ]; then
+    read -p "📢 Опубликовать видео? (y/n): " do_publish
+    if [[ "$do_publish" =~ ^[Yy] ]]; then
+        echo "📤 Запуск публикации..."
+        python publisher.py "$OUTPUT_DIR" \
+            --platforms vk \
+            --title "$TITLE" \
+            --privacy private
+    fi
+else
+    echo "⚠️ Видео не найдено, публикация пропущена."
+fi

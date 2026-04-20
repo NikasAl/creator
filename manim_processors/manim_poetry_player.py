@@ -203,16 +203,33 @@ class PoetryScene(Scene):
                 d.add_updater(get_updater(velocity, p_type))
                 self.particles.add(d)
 
-        elif p_type == "stars":
-            for _ in range(60):
-                d = Dot(radius=random.random()*0.04, color=WHITE)
+        elif p_type == "rain":
+            for _ in range(80):
+                d = Line(ORIGIN, DOWN * random.uniform(0.1, 0.3), stroke_width=1, color=BLUE_D)
+                d.move_to([
+                    random.uniform(-config.frame_width/2, config.frame_width/2),
+                    random.uniform(-config.frame_height/2, config.frame_height/2),
+                    0
+                ])
+                velocity = DOWN * (random.uniform(4, 8))
+                d.add_updater(lambda m, dt, v=velocity: self.rain_move(m, dt, v))
+                self.particles.add(d)
+
+        elif p_type == "stars" or p_type == "fireflies":
+            n = 60 if p_type == "stars" else 25
+            for _ in range(n):
+                color = WHITE if p_type == "stars" else random.choice([YELLOW, GREEN_C, GOLD])
+                d = Dot(radius=random.random()*(0.04 if p_type == "stars" else 0.06), color=color)
                 d.move_to([
                     random.uniform(-config.frame_width/2, config.frame_width/2),
                     random.uniform(-config.frame_height/2, config.frame_height/2),
                     0
                 ])
                 d.phase = random.random() * 10
-                d.add_updater(lambda m, dt: self.star_flicker(m, dt))
+                if p_type == "stars":
+                    d.add_updater(lambda m, dt: self.star_flicker(m, dt))
+                else:
+                    d.add_updater(lambda m, dt: self.firefly_move(m, dt))
                 self.particles.add(d)
 
     # Методы для updaters (нужны чтобы избежать проблем с лямбдами в цикле)
@@ -227,3 +244,20 @@ class PoetryScene(Scene):
         mob.phase += dt
         val = 0.5 + 0.5 * np.sin(3 * mob.phase)
         mob.set_opacity(val)
+
+    def rain_move(self, mob, dt, velocity):
+        mob.shift(velocity * dt)
+        if mob.get_y() < -config.frame_height / 2:
+            mob.set_y(config.frame_height / 2)
+            mob.set_x(random.uniform(-config.frame_width / 2, config.frame_width / 2))
+
+    def firefly_move(self, mob, dt):
+        mob.phase += dt
+        brightness = 0.3 + 0.7 * abs(np.sin(2 * mob.phase))
+        mob.set_opacity(brightness)
+        # Лёгкое плавание
+        mob.shift(np.array([
+            random.uniform(-0.02, 0.02),
+            random.uniform(-0.02, 0.02),
+            0
+        ]))

@@ -130,8 +130,15 @@ PROMO_SOURCE_FILE="song.txt"
 # IMAGE_EDIT_MODEL="google/gemini-2.5-flash-image"
 EOF
 
-echo -e "\n${GREEN}🎉 Пайплайн настроен!${NC}"
-echo "Для запуска: ./process_poetry_manim.sh $CONFIG_FILE"
+echo -e "\n${GREEN}🎉 Пайплайн настроен! Конфиг: $CONFIG_FILE${NC}"
+
+# Открываем конфиг для коррекции в Sublime Text
+if command -v subl &> /dev/null; then
+    read -p "Открыть конфиг для редактирования в Sublime Text? (y/n): " edit_conf
+    if [[ "$edit_conf" =~ ^[Yy] ]]; then
+        subl -w "$CONFIG_FILE"
+    fi
+fi
 
 # Сохраняем путь к конфигу для вызова из process_poetry_manim.sh (без параметров)
 echo "$CONFIG_FILE" > /tmp/.last_poetry_config
