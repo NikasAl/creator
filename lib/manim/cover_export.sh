@@ -9,38 +9,44 @@ _is_wayland() {
 }
 
 # === Вспомогательная функция: получить изображение из буфера обмена ===
+# Используем background процесс + kill вместо `timeout`,
+# т.к. `timeout` может конфликтовать с xclip при работе через X11.
 _paste_from_clipboard() {
     local output_file="$1"
-    local timeout_sec=5
-
-    # Пробуем оба метода (Wayland и X11) с таймаутом,
-    # чтобы не зависнуть в XWayland-сессиях или при проблемах с буфером.
+    local err_log="/tmp/clipboard_cover_err.log"
+    rm -f "$output_file" "$err_log"
 
     # Wayland: wl-paste
     if command -v wl-paste >/dev/null 2>&1; then
-        if timeout "$timeout_sec" wl-paste --type image/png > "$output_file" 2>/dev/null && [ -s "$output_file" ]; then
-            return 0
-        fi
-        # Попробуем без указания типа — wl-paste сам определит формат
+        wl-paste --type image/png > "$output_file" 2>"$err_log" &
+        local pid=$!; sleep 5; kill $pid 2>/dev/null; wait $pid 2>/dev/null
+        if [ -s "$output_file" ]; then return 0; fi
         rm -f "$output_file"
-        if timeout "$timeout_sec" wl-paste --type 'image/*' > "$output_file" 2>/dev/null && [ -s "$output_file" ]; then
-            return 0
-        fi
+        # Попробуем image/*
+        wl-paste --type 'image/*' > "$output_file" 2>"$err_log" &
+        pid=$!; sleep 5; kill $pid 2>/dev/null; wait $pid 2>/dev/null
+        if [ -s "$output_file" ]; then return 0; fi
         rm -f "$output_file"
     fi
 
-    # X11: xclip
+    # X11: xclip — сначала без указания типа (самый надёжный способ)
     if command -v xclip >/dev/null 2>&1; then
-        if timeout "$timeout_sec" xclip -selection clipboard -t image/png -o > "$output_file" 2>/dev/null && [ -s "$output_file" ]; then
-            return 0
-        fi
-        # Попробуем без указания типа — xclip вернёт любой содержимый формат
+        xclip -selection clipboard -o > "$output_file" 2>"$err_log" &
+        local pid=$!; sleep 5; kill $pid 2>/dev/null; wait $pid 2>/dev/null
+        if [ -s "$output_file" ]; then return 0; fi
         rm -f "$output_file"
-        if timeout "$timeout_sec" xclip -selection clipboard -o > "$output_file" 2>/dev/null && [ -s "$output_file" ]; then
-            return 0
-        fi
+        # Попробуем с явным указанием image/png
+        xclip -selection clipboard -t image/png -o > "$output_file" 2>"$err_log" &
+        pid=$!; sleep 5; kill $pid 2>/dev/null; wait $pid 2>/dev/null
+        if [ -s "$output_file" ]; then return 0; fi
         rm -f "$output_file"
     fi
+
+    # Диагностика
+    if [ -s "$err_log" ]; then
+        echo -e "  ${RED}xclip/wl-paste error: $(cat "$err_log")${NC}"
+    fi
+    echo -e "  ${YELLOW}DISPLAY=$DISPLAY  WAYLAND=$WAYLAND_DISPLAY  XDG_SESSION=$XDG_SESSION_TYPE${NC}"
 
     return 1
 }
@@ -125,9 +131,13 @@ export_cover() {
         fi
     fi
 
-    # Попробуем найти скриншот от mpv (создаётся при нажатии 's')
+    # Ищем скриншот от mpv (создаётся при нажатии 's' в mpv)
+    # mpv сохраняет как .jpg по умолчанию! Ищем в нескольких местах.
     echo -e "${YELLOW}🔍 Ищем скриншот от mpv...${NC}"
-    MPV_SHOT=$(find ~/Pictures /tmp "$output_dir" -maxdepth 1 -name "mpv-shot*.png" -newer "$output_video_file" 2>/dev/null | head -1)
+    MPV_SHOT=$(find ~/Pictures /tmp "$output_dir" . -maxdepth 2 \
+        \( -name "mpv-shot*.jpg" -o -name "mpv-shot*.png" \) \
+        -newer "$output_video_file" 2>/dev/null \
+        | sort -r | head -1)
     if [ -n "$MPV_SHOT" ] && [ -f "$MPV_SHOT" ]; then
         echo -e "${GREEN}✅ Найден скриншот mpv: $MPV_SHOT${NC}"
         _convert_to_cover "$MPV_SHOT" "$cover_file" "$output_dir"
@@ -163,7 +173,7 @@ _convert_to_cover() {
 
     # Удаляем временный файл только если он не пользовательский
     case "$src" in
-        */clipboard_image.png|*/mpv-shot*.png)
+        */clipboard_image.png|*/mpv-shot*)
             rm -f "$src"
             ;;
     esac
