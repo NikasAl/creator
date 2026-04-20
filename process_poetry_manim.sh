@@ -197,6 +197,42 @@ if [ -f "$OUTPUT_DIR/video.mp4" ]; then
             --platforms vk \
             --title "$TITLE" \
             --privacy private
+
+        # Предлагаем опубликовать статью в группу
+        if [ -f "$OUTPUT_DIR/promo_description.txt" ]; then
+            echo ""
+            read -p "📝 Опубликовать статью в группу VK? (y/n): " do_article
+            if [[ "$do_article" =~ ^[Yy] ]]; then
+                echo "📤 Публикация статьи..."
+                python -c "
+import sys, json
+sys.path.insert(0, '.')
+from publishers.vk_publisher import VKPublisher
+from publishers.pipeline_analyzer import PipelineAnalyzer
+from publishers.base_publisher import VideoMetadata
+
+analyzer = PipelineAnalyzer('$OUTPUT_DIR')
+analyzer.analyze()
+m = analyzer.metadata
+
+vk = VKPublisher()
+if not vk.authenticate():
+    sys.exit(1)
+
+md = VideoMetadata(
+    title='$TITLE' or m.book_title or 'Публикация',
+    description=m.promo_description or '',
+    tags=[],
+    privacy='private'
+)
+post_id = vk.publish_wall_article(md)
+if post_id:
+    print(f'✅ Статья: https://vk.com/wall-{vk.group_id}_{post_id}')
+else:
+    print('⚠️ Статья не опубликована')
+"
+            fi
+        fi
     fi
 else
     echo "⚠️ Видео не найдено, публикация пропущена."

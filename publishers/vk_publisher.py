@@ -181,13 +181,13 @@ class VKPublisher(BasePublisher):
             if not saved_video_id:
                 return None
             
-            # Публикуем в группу если указана (отключено для плагин-приложений)
+            # Публикуем в группу если указана
             if self.group_id:
-                self.log_warning("Публикация в группу недоступна для плагин-приложений VK")
-                self.log_info("Используйте Standalone-приложение для публикации в группу")
-                # post_id = self._publish_to_group(saved_video_id, metadata)
-                # if post_id:
-                #     self.log_success(f"Видео опубликовано в группу. Пост ID: {post_id}")
+                post_id = self._publish_to_group(saved_video_id, metadata)
+                if post_id:
+                    self.log_success(f"Видео опубликовано в группу. Пост ID: {post_id}")
+                else:
+                    self.log_warning("Не удалось опубликовать в группу (возможно, нужен Standalone-тип приложения и права wall)")
             
             return saved_video_id
             
@@ -200,15 +200,36 @@ class VKPublisher(BasePublisher):
         Загружает аудио на VK Audio
         
         Args:
-            metadata: Метаданные аудио (используем video_path для аудиофайла)
+            metadata: Метаданные (video_path используется для поиска audio.mp3)
             
         Returns:
-            ID загруженного аудио или None при ошибке
+            ID загруженного аудио (owner_id_audio_id) или None
         """
-        # Плагин-приложения VK не поддерживают загрузку аудио через API
-        self.log_warning("Загрузка аудио в VK недоступна для плагин-приложений")
-        self.log_info("Используйте Standalone-приложение для загрузки аудио или загружайте только видео")
-        return None
+        if not self.access_token:
+            self.log_error("Токен доступа VK не найден")
+            return None
+        
+        # Определяем путь к аудио
+        audio_path = metadata.video_path.replace('video.mp4', 'audio.mp3')
+        if not Path(audio_path).exists():
+            self.log_warning(f"Аудиофайл не найден: {audio_path}")
+            return None
+        
+        try:
+            # Получаем URL для загрузки
+            upload_url = self._get_audio_upload_url()
+            if not upload_url:
+                return None
+            
+            # Загружаем файл
+            audio_id = self._upload_audio_file(upload_url, audio_path, metadata)
+            if audio_id:
+                self.log_success(f"Аудио загружено. ID: {audio_id}")
+            return audio_id
+            
+        except Exception as e:
+            self.log_error(f"Ошибка загрузки аудио: {e}")
+            return None
     
     def upload_both(self, metadata: VideoMetadata) -> Dict[str, Optional[str]]:
         """
@@ -557,4 +578,78 @@ class VKPublisher(BasePublisher):
         #     errors.append("Описание видео не может быть длиннее 2048 символов")
         
         return errors
+
+    def publish_wall_article(self, metadata: VideoMetadata,
+                             video_id: Optional[str] = None) -> Optional[str]:
+        """
+        Публикует статью/пост на стене группы с текстом и вложениями.
+
+        Args:
+            metadata: Метаданные (title + description используются как текст поста)
+            video_id: ID ранее загруженного видео (опционально, для вложения)
+
+        Returns:
+            ID поста или None
+        """
+        if not self.group_id:
+            self.log_error("Не указан ID группы (VK_GROUP_ID)")
+            return None
+
+        try:
+            # Формируем текст поста: заголовок + описание + хештеги
+            parts = []
+            if metadata.title:
+                parts.append(metadata.title)
+            if metadata.description:
+                # Не дублируем описание если оно совпадает с title
+                if metadata.description != metadata.title:
+                    parts.append(metadata.description)
+            if metadata.tags:
+                tags_str = " ".join(f"#{t}" for t in metadata.tags[:10])
+                parts.append(tags_str)
+
+            post_text = "\n\n".join(parts)
+
+            # Формируем вложения
+            attachments = []
+            if video_id:
+                # video attachment format: video{owner_id}_{video_id}
+                if self.group_id:
+                    attachments.append(f"video{self.group_id}_{video_id}")
+                else:
+                    attachments.append(f"video{video_id}")
+
+            params = {
+                'access_token': self.access_token,
+                'v': self.API_VERSION,
+                'owner_id': f"-{self.group_id}",
+                'message': self.truncate_text(post_text, 4096),
+                'from_group': 1,
+            }
+            if attachments:
+                params['attachments'] = ','.join(attachments)
+
+            response = requests.post(f"{self.API_BASE_URL}/wall.post", data=params)
+            data = response.json()
+
+            if 'error' in data:
+                error_code = data['error'].get('error_code', 0)
+                error_msg = data['error'].get('error_msg', '')
+                self.log_error(f"Ошибка публикации статьи: [{error_code}] {error_msg}")
+                if error_code == 7:
+                    self.log_info("Права wall необходимы. Добавьте 'wall' в scope при авторизации.")
+                return None
+
+            if 'response' in data and 'post_id' in data['response']:
+                post_id = data['response']['post_id']
+                owner_id = data['response'].get('post_id')
+                self.log_success(f"Статья опубликована в группу. Пост ID: {post_id}")
+                return str(post_id)
+            else:
+                self.log_error(f"Не удалось опубликовать статью. Ответ: {data}")
+                return None
+
+        except Exception as e:
+            self.log_error(f"Ошибка публикации статьи: {e}")
+            return None
 

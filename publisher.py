@@ -107,20 +107,24 @@ class VideoPublisher:
         Генерирует метаданные для видео
         
         Args:
-            use_llm: Использовать ли LLM для генерации
+            use_llm: Использовать ли LLM для генерации названия и тегов
             custom_title: Пользовательское название
             custom_description: Пользовательское описание
             custom_tags: Пользовательские теги
             
         Returns:
             Метаданные видео
+            
+        Note:
+            Описание видео берётся напрямую из promo_description.txt (если есть),
+            а НЕ генерируется через LLM — чтобы сохранить подготовленный текст.
         """
         if not self.pipeline_analyzer:
             raise ValueError("Пайплайн не проанализирован")
         
         metadata = self.pipeline_analyzer.metadata
         
-        # Определяем название
+        # Определяем название (LLM)
         if custom_title:
             title = custom_title
         elif use_llm and metadata.promo_description:
@@ -138,25 +142,29 @@ class VideoPublisher:
         else:
             title = self.pipeline_analyzer.suggest_title()
         
-        # Определяем описание
+        # Определяем описание — используем promo_description напрямую!
         if custom_description:
             description = custom_description
-        elif use_llm and metadata.promo_description:
-            try:
-                if not self.llm_generator:
-                    self.llm_generator = LLMMetadataGenerator(self.config_file)
-                description = self.llm_generator.generate_description(
-                    metadata.promo_description,
-                    metadata.book_title,
-                    metadata.book_author
-                )
-            except Exception as e:
-                print(f"⚠️  Ошибка генерации описания через LLM: {e}")
-                description = self.pipeline_analyzer.suggest_description()
+        elif metadata.promo_description:
+            description = metadata.promo_description
         else:
-            description = self.pipeline_analyzer.suggest_description()
+            # Fallback: LLM или suggest
+            if use_llm:
+                try:
+                    if not self.llm_generator:
+                        self.llm_generator = LLMMetadataGenerator(self.config_file)
+                    description = self.llm_generator.generate_description(
+                        metadata.book_title or '',
+                        metadata.book_title,
+                        metadata.book_author
+                    )
+                except Exception as e:
+                    print(f"⚠️  Ошибка генерации описания через LLM: {e}")
+                    description = self.pipeline_analyzer.suggest_description()
+            else:
+                description = self.pipeline_analyzer.suggest_description()
         
-        # Определяем теги
+        # Определяем теги (LLM)
         if custom_tags:
             tags = custom_tags
         elif use_llm and metadata.promo_description:
