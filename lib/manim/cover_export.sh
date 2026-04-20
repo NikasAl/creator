@@ -5,23 +5,41 @@
 
 # === Вспомогательная функция: определить Wayland или X11 ===
 _is_wayland() {
-    [ -n "$WAYLAND_DISPLAY" ] || [ -n "$XDG_SESSION_TYPE" ] && [ "$XDG_SESSION_TYPE" = "wayland" ]
+    [ "$XDG_SESSION_TYPE" = "wayland" ] || [ -n "$WAYLAND_DISPLAY" ]
 }
 
 # === Вспомогательная функция: получить изображение из буфера обмена ===
 _paste_from_clipboard() {
     local output_file="$1"
+    local timeout_sec=5
 
-    if _is_wayland; then
-        # Wayland: wl-paste
-        if command -v wl-paste >/dev/null 2>&1; then
-            wl-paste --type image/png > "$output_file" 2>/dev/null && return 0
+    # Пробуем оба метода (Wayland и X11) с таймаутом,
+    # чтобы не зависнуть в XWayland-сессиях или при проблемах с буфером.
+
+    # Wayland: wl-paste
+    if command -v wl-paste >/dev/null 2>&1; then
+        if timeout "$timeout_sec" wl-paste --type image/png > "$output_file" 2>/dev/null && [ -s "$output_file" ]; then
+            return 0
         fi
+        # Попробуем без указания типа — wl-paste сам определит формат
+        rm -f "$output_file"
+        if timeout "$timeout_sec" wl-paste --type 'image/*' > "$output_file" 2>/dev/null && [ -s "$output_file" ]; then
+            return 0
+        fi
+        rm -f "$output_file"
     fi
 
     # X11: xclip
     if command -v xclip >/dev/null 2>&1; then
-        xclip -selection clipboard -t image/png -o > "$output_file" 2>/dev/null && return 0
+        if timeout "$timeout_sec" xclip -selection clipboard -t image/png -o > "$output_file" 2>/dev/null && [ -s "$output_file" ]; then
+            return 0
+        fi
+        # Попробуем без указания типа — xclip вернёт любой содержимый формат
+        rm -f "$output_file"
+        if timeout "$timeout_sec" xclip -selection clipboard -o > "$output_file" 2>/dev/null && [ -s "$output_file" ]; then
+            return 0
+        fi
+        rm -f "$output_file"
     fi
 
     return 1
