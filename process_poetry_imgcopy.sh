@@ -23,12 +23,12 @@ IFS=$'\n'
 mkdir -p "$PIPELINE_DIR/images/"
 
 # 3. Инициализируем счетчик
-count=1
+count=0
 
 # 4. Запускаем цикл по файлам, отсортированным по времени (ключ -tr)
 # Обратите внимание: я сократил маску до Gemini_Generated_Image_*.png для надежности,
 # но вы можете вернуть вашу длинную маску, если в папке есть лишние файлы.
-for file in $(ls -tr ~/Downloads/Gemini_Generated_Image*.png); do
+for file in $(ls -tr ~/Downloads/177804*.png); do
     # Формируем новое имя с нулем в начале (01, 02...)
     new_name=$(printf "illustration_%02d.png" "$count")
     
