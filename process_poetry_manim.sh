@@ -122,38 +122,109 @@ else
     fi
 fi
 
-# 4. Циклическая генерация и проверка иллюстраций
+# 4. Иллюстрации: AI генерация или копирование скачанных
 echo ""
-echo "🎨 Запуск циклической генерации и проверки иллюстраций..."
+echo "🎨 Подготовка иллюстраций"
+echo "  [1] Сгенерировать AI (Together/FLUX)"
+echo "  [2] Скопировать скачанные изображения из ~/Downloads/"
+read -p "Выберите вариант (1/2): " img_choice
 
-while true; do
-    echo ""
-    echo "🔄 Проверка и генерация иллюстраций (шаг: просмотр/перегенерация)..."
-    python video_processors/illustration_review_cli.py \
-        --pipeline-dir "$OUTPUT_DIR" \
-        --width 1366 --height 768 \
-        --steps 4
+if [ "$img_choice" = "2" ]; then
+    # --- Копирование скачанных изображений ---
+    while true; do
+        read -p "Маска файлов в ~/Downloads/ (Enter для 177804*.png): " file_mask
+        file_mask="${file_mask:-177804*.png}"
 
-    echo ""
-    echo "👀 Проверьте изображения в: $OUTPUT_DIR/images и удалите плохие"
-    pcmanfm "$OUTPUT_DIR/images" &
-    read -p "Все изображения устраивают? (y/n): " images_ok
-    if [[ "$images_ok" =~ ^[Yy]$ ]]; then
-        echo "✅ Все иллюстрации подтверждены. Переход к сборке видео..."
-        break
-    else
-        echo "🔁 Продолжаем работу над иллюстрациями..."
-    fi
-    
-    read -p "Хотите скорректировать промпты генерации? (y/n): " prompts_ok
-    if [[ "$prompts_ok" =~ ^[Yy]$ ]]; then
-        echo "🔧 Запуск корректора промптов (перевод en↔ru, Sublime Text)..."
-        python text_processors/illustrations_corrector.py "$OUTPUT_DIR"
-        if [ $? -ne 0 ]; then
-            echo "⚠️ Ошибка при редактировании промптов. Продолжаем..."
+        # Считаем подходящие файлы
+        IFS=$'\n'
+        found_files=($(ls -tr ~/Downloads/$file_mask 2>/dev/null))
+        unset IFS
+        download_count=${#found_files[@]}
+
+        if [ "$download_count" -eq 0 ]; then
+            echo "❌ Файлы по маске «$file_mask» не найдены в ~/Downloads/"
+            echo "   Попробуйте другую маску (например: Gemini_Generated_Image_*.png)"
+            continue
         fi
+
+        echo "Найдено файлов: $download_count"
+        for f in "${found_files[@]}"; do echo "  - $(basename "$f")"; done
+
+        # Проверка совпадения с количеством сегментов в screenplay.json
+        segment_count="?"
+        if [ -f "$OUTPUT_DIR/screenplay.json" ]; then
+            segment_count=$(python3 -c "import json; print(len(json.load(open('$OUTPUT_DIR/screenplay.json'))))" 2>/dev/null || echo "?")
+        fi
+        if [ "$segment_count" != "?" ]; then
+            if [ "$download_count" -lt "$segment_count" ]; then
+                echo "⚠️  Найдено изображений ($download_count) меньше, чем сегментов ($segment_count)"
+                echo "   Нехватка: $((segment_count - download_count)) шт."
+            elif [ "$download_count" -gt "$segment_count" ]; then
+                echo "ℹ️  Найдено изображений ($download_count) больше, чем сегментов ($segment_count)"
+                echo "   Лишние будут скопированы, но не использованы в видео."
+            else
+                echo "✅ Количество совпадает с сегментами в сценарии ($segment_count)"
+            fi
+        fi
+
+        read -p "Скопировать $download_count файлов в $OUTPUT_DIR/images/? (y/n): " do_copy
+        if [[ "$do_copy" =~ ^[Yy] ]]; then
+            count=0
+            IFS=$'\n'
+            for file in $(ls -tr ~/Downloads/$file_mask); do
+                new_name=$(printf "illustration_%02d.png" "$count")
+                mv "$file" "$OUTPUT_DIR/images/$new_name"
+                echo "  $(basename "$file") -> $new_name"
+                ((count++))
+            done
+            unset IFS
+            echo ""
+            echo "✅ Скопировано изображений: $count"
+            break
+        fi
+    done
+
+    # Просмотр и подтверждение
+    echo ""
+    echo "👀 Проверьте изображения в: $OUTPUT_DIR/images"
+    pcmanfm "$OUTPUT_DIR/images" &
+    read -p "Изображения устраивают? (y/n): " images_ok
+    if [[ ! "$images_ok" =~ ^[Yy]$ ]]; then
+        echo "⚠️ Удалите ненужные файлы и запустите скрипт снова."
+        exit 1
     fi
-done
+    echo "✅ Все иллюстрации подтверждены. Переход к сборке видео..."
+else
+    # --- AI генерация (оригинальный цикл) ---
+    while true; do
+        echo ""
+        echo "🔄 Проверка и генерация иллюстраций (шаг: просмотр/перегенерация)..."
+        python video_processors/illustration_review_cli.py \
+            --pipeline-dir "$OUTPUT_DIR" \
+            --width 1366 --height 768 \
+            --steps 4
+
+        echo ""
+        echo "👀 Проверьте изображения в: $OUTPUT_DIR/images и удалите плохие"
+        pcmanfm "$OUTPUT_DIR/images" &
+        read -p "Все изображения устраивают? (y/n): " images_ok
+        if [[ "$images_ok" =~ ^[Yy]$ ]]; then
+            echo "✅ Все иллюстрации подтверждены. Переход к сборке видео..."
+            break
+        else
+            echo "🔁 Продолжаем работу над иллюстрациями..."
+        fi
+
+        read -p "Хотите скорректировать промпты генерации? (y/n): " prompts_ok
+        if [[ "$prompts_ok" =~ ^[Yy]$ ]]; then
+            echo "🔧 Запуск корректора промптов (перевод en↔ru, Sublime Text)..."
+            python text_processors/illustrations_corrector.py "$OUTPUT_DIR"
+            if [ $? -ne 0 ]; then
+                echo "⚠️ Ошибка при редактировании промптов. Продолжаем..."
+            fi
+        fi
+    done
+fi
 
 # 5. Сборка в Manim
 echo ""
