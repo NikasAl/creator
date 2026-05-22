@@ -137,7 +137,7 @@ if [ "$img_choice" = "2" ]; then
 
         # Считаем подходящие файлы
         IFS=$'\n'
-        found_files=($(ls -tr ~/Downloads/$file_mask 2>/dev/null))
+        found_files=($(ls -1v ~/Downloads/$file_mask 2>/dev/null))
         unset IFS
         download_count=${#found_files[@]}
 
@@ -171,7 +171,7 @@ if [ "$img_choice" = "2" ]; then
         if [[ "$do_copy" =~ ^[Yy] ]]; then
             count=0
             IFS=$'\n'
-            for file in $(ls -tr ~/Downloads/$file_mask); do
+            for file in $(ls -1v ~/Downloads/$file_mask); do
                 new_name=$(printf "illustration_%02d.png" "$count")
                 mv "$file" "$OUTPUT_DIR/images/$new_name"
                 echo "  $(basename "$file") -> $new_name"
