@@ -130,63 +130,137 @@ echo "  [2] Скопировать скачанные изображения и�
 read -p "Выберите вариант (1/2): " img_choice
 
 if [ "$img_choice" = "2" ]; then
-    # --- Копирование скачанных изображений ---
-    while true; do
-        read -p "Маска файлов в ~/Downloads/ (Enter для 177804*.png): " file_mask
-        file_mask="${file_mask:-177804*.png}"
+    # --- Копирование скачанных изображений с мониторингом ~/Downloads ---
 
-        # Считаем подходящие файлы
-        IFS=$'\n'
-        found_files=($(ls -1v ~/Downloads/$file_mask 2>/dev/null))
-        unset IFS
-        download_count=${#found_files[@]}
+    # Абсолютные пути для промпта
+    SONG_PATH=$(realpath "$INPUT_FILE" 2>/dev/null || echo "$INPUT_FILE")
+    ILLUSTRATIONS_PATH=$(realpath "$OUTPUT_DIR/illustrations.json" 2>/dev/null || echo "$OUTPUT_DIR/illustrations.json")
 
-        if [ "$download_count" -eq 0 ]; then
-            echo "❌ Файлы по маске «$file_mask» не найдены в ~/Downloads/"
-            echo "   Попробуйте другую маску (например: Gemini_Generated_Image_*.png)"
-            continue
-        fi
+    # Количество сегментов в сценарии
+    segment_count="?"
+    if [ -f "$OUTPUT_DIR/screenplay.json" ]; then
+        segment_count=$(python3 -c "import json; print(len(json.load(open('$OUTPUT_DIR/screenplay.json'))))" 2>/dev/null || echo "?")
+    fi
 
-        echo "Найдено файлов: $download_count"
-        for f in "${found_files[@]}"; do echo "  - $(basename "$f")"; done
+    # Текущее количество изображений (чтобы продолжить нумерацию)
+    count=$(ls -1 "$OUTPUT_DIR/images/illustration_"*.png 2>/dev/null | wc -l)
+    count=$((count))
 
-        # Проверка совпадения с количеством сегментов в screenplay.json
-        segment_count="?"
-        if [ -f "$OUTPUT_DIR/screenplay.json" ]; then
-            segment_count=$(python3 -c "import json; print(len(json.load(open('$OUTPUT_DIR/screenplay.json'))))" 2>/dev/null || echo "?")
-        fi
-        if [ "$segment_count" != "?" ]; then
-            if [ "$download_count" -lt "$segment_count" ]; then
-                echo "⚠️  Найдено изображений ($download_count) меньше, чем сегментов ($segment_count)"
-                echo "   Нехватка: $((segment_count - download_count)) шт."
-            elif [ "$download_count" -gt "$segment_count" ]; then
-                echo "ℹ️  Найдено изображений ($download_count) больше, чем сегментов ($segment_count)"
-                echo "   Лишние будут скопированы, но не использованы в видео."
-            else
-                echo "✅ Количество совпадает с сегментами в сценарии ($segment_count)"
-            fi
-        fi
+    # Печатаем промпт для чата + копируем в буфер обмена
+    CHAT_PROMPT="Вот мои стихи:
+$SONG_PATH
+---
+Создадим иллюстрации одну за другой по описанию из json:
+$ILLUSTRATIONS_PATH"
 
-        read -p "Скопировать $download_count файлов в $OUTPUT_DIR/images/? (y/n): " do_copy
-        if [[ "$do_copy" =~ ^[Yy] ]]; then
-            count=0
-            IFS=$'\n'
-            for file in $(ls -1v ~/Downloads/$file_mask); do
-                new_name=$(printf "illustration_%02d.png" "$count")
-                mv "$file" "$OUTPUT_DIR/images/$new_name"
-                echo "  $(basename "$file") -> $new_name"
-                ((count++))
-            done
-            unset IFS
+    echo ""
+    echo "📋 Промпт для чата (скопирован в буфер обмена):"
+    echo "──────────────────────────────────────────────────────"
+    echo "$CHAT_PROMPT"
+    echo "──────────────────────────────────────────────────────"
+    echo "$CHAT_PROMPT" | xclip -selection clipboard 2>/dev/null && \
+        echo "✅ Скопировано в буфер обмена (Ctrl+V в чат)" || \
+        echo "⚠️ Буфер обмена недоступен — скопируйте вручную"
+    echo ""
+
+    if [ "$segment_count" != "?" ]; then
+        echo "📊 Сегментов в сценарии: $segment_count"
+        [ "$count" -gt 0 ] && echo "   Уже есть изображений: $count (продолжим с #$count)"
+    fi
+
+    if command -v inotifywait &>/dev/null; then
+        # --- Режим мониторинга: auto-копирование новых .png по мере скачивания ---
+        echo ""
+        echo "👀 Мониторинг ~/Downloads/ на новые .png файлы..."
+        echo "   Скачивайте изображения в нужном порядке — они будут"
+        echo "   автоматически перемещаться и переименовываться."
+        echo "   Нажмите [Enter] когда закончите."
+        echo ""
+
+        COUNTER_FILE=$(mktemp)
+        echo "$count" > "$COUNTER_FILE"
+
+        stop_monitor() {
+            [ -n "$WATCH_PID" ] && { kill "$WATCH_PID" 2>/dev/null; wait "$WATCH_PID" 2>/dev/null; }
+            rm -f "$COUNTER_FILE"
             echo ""
-            echo "✅ Скопировано изображений: $count"
-            break
-        fi
-    done
+        }
+        trap stop_monitor INT
+
+        inotifywait -m -e close_write,moved_to \
+            --format '%w%f' ~/Downloads --include '\.png$' 2>/dev/null | \
+        while IFS= read -r filepath; do
+            [ -z "$filepath" ] && continue
+            [[ "$(basename "$filepath")" == .* ]] && continue
+
+            sleep 0.3  # ждём завершения записи браузера
+
+            [ -f "$filepath" ] || continue
+
+            cur=$(cat "$COUNTER_FILE")
+            new_name=$(printf "illustration_%02d.png" "$cur")
+            mv "$filepath" "$OUTPUT_DIR/images/$new_name"
+            echo "  ✅ $(basename "$filepath") -> $new_name"
+            echo $((cur + 1)) > "$COUNTER_FILE"
+
+            if [ "$segment_count" != "?" ] && [ $((cur + 1)) -ge "$segment_count" ]; then
+                echo ""
+                echo "🎉 Все $segment_count изображений получены!"
+            fi
+        done &
+        WATCH_PID=$!
+
+        read -p ""
+        stop_monitor
+        trap - INT
+    else
+        # --- Ручной режим (fallback без inotifywait) ---
+        echo ""
+        echo "⚠️ inotifywait не установлен — ручной режим."
+        echo "   Для авто-мониторинга: sudo apt install inotify-tools"
+        echo ""
+
+        while true; do
+            read -p "Маска файлов в ~/Downloads/ (Enter для *.png): " file_mask
+            file_mask="${file_mask:-*.png}"
+
+            IFS=$'\n'
+            found_files=($(ls -1v ~/Downloads/$file_mask 2>/dev/null))
+            unset IFS
+            fc=${#found_files[@]}
+
+            [ "$fc" -eq 0 ] && { echo "❌ Файлы не найдены. Попробуйте другую маску."; continue; }
+
+            echo "Найдено: $fc"
+            for f in "${found_files[@]}"; do echo "  - $(basename "$f")"; done
+
+            read -p "Переместить в $OUTPUT_DIR/images/? (y/n): " do_copy
+            if [[ "$do_copy" =~ ^[Yy] ]]; then
+                IFS=$'\n'
+                for file in $(ls -1v ~/Downloads/$file_mask); do
+                    new_name=$(printf "illustration_%02d.png" "$count")
+                    mv "$file" "$OUTPUT_DIR/images/$new_name"
+                    echo "  $(basename "$file") -> $new_name"
+                    ((count++))
+                done
+                unset IFS
+                break
+            fi
+        done
+    fi
+
+    # Итого
+    final_count=$(ls -1 "$OUTPUT_DIR/images/illustration_"*.png 2>/dev/null | wc -l)
+    final_count=$((final_count))
+    echo ""
+    echo "📥 Итого изображений в images/: $final_count"
+    if [ "$segment_count" != "?" ] && [ "$final_count" -lt "$segment_count" ]; then
+        echo "⚠️ Не хватает $((segment_count - final_count)) шт."
+    fi
 
     # Просмотр и подтверждение
     echo ""
-    echo "👀 Проверьте изображения в: $OUTPUT_DIR/images"
+    echo "👀 Проверьте изображения: $OUTPUT_DIR/images"
     pcmanfm "$OUTPUT_DIR/images" &
     read -p "Изображения устраивают? (y/n): " images_ok
     if [[ ! "$images_ok" =~ ^[Yy]$ ]]; then
