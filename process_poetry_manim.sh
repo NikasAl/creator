@@ -57,8 +57,7 @@ if [ ! -f "$TIMESTAMPS_FILE" ]; then
         --audio "$AUDIO_FILE" \
         --output-dir "$OUTPUT_DIR" \
         --json-filename "sentence_timestamps.json" \
-        --language "ru" \
-        --hint-file "$INPUT_FILE"
+        --language "ru"
 else
     echo "✅ Таймстампы найдены."
 fi
@@ -132,9 +131,9 @@ read -p "Выберите вариант (1/2): " img_choice
 if [ "$img_choice" = "2" ]; then
     # --- Копирование скачанных изображений с мониторингом ~/Downloads ---
 
-    # Абсолютные пути для промпта
-    SONG_PATH=$(realpath "$INPUT_FILE" 2>/dev/null || echo "$INPUT_FILE")
-    ILLUSTRATIONS_PATH=$(realpath "$OUTPUT_DIR/illustrations.json" 2>/dev/null || echo "$OUTPUT_DIR/illustrations.json")
+    # Собираем содержимое файлов для промпта
+    SONG_TEXT=$(cat "$INPUT_FILE" 2>/dev/null || echo "(файл не найден)")
+    ILLUSTRATIONS_TEXT=$(cat "$OUTPUT_DIR/illustrations.json" 2>/dev/null || echo "(файл не найден)")
 
     # Количество сегментов в сценарии
     segment_count="?"
@@ -148,10 +147,10 @@ if [ "$img_choice" = "2" ]; then
 
     # Печатаем промпт для чата + копируем в буфер обмена
     CHAT_PROMPT="Вот мои стихи:
-$SONG_PATH
+$SONG_TEXT
 ---
 Создадим иллюстрации одну за другой по описанию из json:
-$ILLUSTRATIONS_PATH"
+$ILLUSTRATIONS_TEXT"
 
     echo ""
     echo "📋 Промпт для чата (скопирован в буфер обмена):"
@@ -180,39 +179,40 @@ $ILLUSTRATIONS_PATH"
         COUNTER_FILE=$(mktemp)
         echo "$count" > "$COUNTER_FILE"
 
-        stop_monitor() {
-            [ -n "$WATCH_PID" ] && { kill "$WATCH_PID" 2>/dev/null; wait "$WATCH_PID" 2>/dev/null; }
-            rm -f "$COUNTER_FILE"
-            echo ""
-        }
-        trap stop_monitor INT
+        (
+            inotifywait -m -e close_write,moved_to \
+                --format '%w%f' ~/Downloads --include '\.png$' 2>/dev/null | \
+            while IFS= read -r filepath; do
+                [ -z "$filepath" ] && continue
+                [[ "$(basename "$filepath")" == .* ]] && continue
 
-        inotifywait -m -e close_write,moved_to \
-            --format '%w%f' ~/Downloads --include '\.png$' 2>/dev/null | \
-        while IFS= read -r filepath; do
-            [ -z "$filepath" ] && continue
-            [[ "$(basename "$filepath")" == .* ]] && continue
+                sleep 0.3  # ждём завершения записи браузера
 
-            sleep 0.3  # ждём завершения записи браузера
+                [ -f "$filepath" ] || continue
 
-            [ -f "$filepath" ] || continue
+                cur=$(cat "$COUNTER_FILE")
+                new_name=$(printf "illustration_%02d.png" "$cur")
+                mv "$filepath" "$OUTPUT_DIR/images/$new_name"
+                echo "  ✅ $(basename "$filepath") -> $new_name"
+                echo $((cur + 1)) > "$COUNTER_FILE"
 
-            cur=$(cat "$COUNTER_FILE")
-            new_name=$(printf "illustration_%02d.png" "$cur")
-            mv "$filepath" "$OUTPUT_DIR/images/$new_name"
-            echo "  ✅ $(basename "$filepath") -> $new_name"
-            echo $((cur + 1)) > "$COUNTER_FILE"
-
-            if [ "$segment_count" != "?" ] && [ $((cur + 1)) -ge "$segment_count" ]; then
-                echo ""
-                echo "🎉 Все $segment_count изображений получены!"
-            fi
-        done &
+                if [ "$segment_count" != "?" ] && [ $((cur + 1)) -ge "$segment_count" ]; then
+                    echo ""
+                    echo "🎉 Все $segment_count изображений получены!"
+                fi
+            done
+        ) &
         WATCH_PID=$!
 
-        read -p ""
-        stop_monitor
-        trap - INT
+        read -r -p "Нажмите [Enter] когда закончите скачивание: "
+
+        # Убиваем всю группу фоновых процессов (inotifywait + while)
+        pkill -P "$WATCH_PID" 2>/dev/null
+        kill "$WATCH_PID" 2>/dev/null
+        wait "$WATCH_PID" 2>/dev/null
+        rm -f "$COUNTER_FILE"
+        echo ""
+        echo "✅ Мониторинг остановлен."
     else
         # --- Ручной режим (fallback без inotifywait) ---
         echo ""
