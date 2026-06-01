@@ -96,7 +96,7 @@ def transcribe_segments(audio_path, output_dir, json_name, language, config_file
         try:
             import whisper
             print("🎤 Запуск локального Whisper...")
-            model_name = os.getenv("WHISPER_MODEL", "small")
+            model_name = os.getenv("WHISPER_MODEL", "medium")
             model = whisper.load_model(model_name)
 
             transcribe_options = {"language": language, "verbose": True}
