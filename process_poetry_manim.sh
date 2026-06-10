@@ -53,11 +53,27 @@ fi
 echo ""
 if [ ! -f "$TIMESTAMPS_FILE" ]; then
     echo "🎤 Транскрибация аудио..."
-    python video_processors/sentence_transcriber.py \
-        --audio "$AUDIO_FILE" \
-        --output-dir "$OUTPUT_DIR" \
-        --json-filename "sentence_timestamps.json" \
-        --language "ru"
+    echo "  [1] Whisper (стандартный)"
+    echo "  [2] WhisperX (whisper + wav2vec2 alignment, точнее на ~50мс)"
+    read -p "Выберите режим транскрибации (1/2): " ts_choice
+
+    if [ "$ts_choice" = "2" ]; then
+        echo "🔗 Запуск WhisperX транскрибатора..."
+        python video_processors/sentence_transcriber_whisperx.py \
+            --audio "$AUDIO_FILE" \
+            --output-dir "$OUTPUT_DIR" \
+            --json-filename "sentence_timestamps.json" \
+            --language "ru" \
+            --model "medium" \
+            --device "cpu" \
+            --compute-type "int8"
+    else
+        python video_processors/sentence_transcriber.py \
+            --audio "$AUDIO_FILE" \
+            --output-dir "$OUTPUT_DIR" \
+            --json-filename "sentence_timestamps.json" \
+            --language "ru"
+    fi
 else
     echo "✅ Таймстампы найдены."
 fi
