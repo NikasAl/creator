@@ -10,23 +10,23 @@
 #   ./process_audio_video.sh /path/to/audio.mp3 # явное указание файла
 #   ./process_audio_video.sh configs/audio_video/example.conf
 
-set -euo pipefail
+set -eo pipefail
 
 # ============================================================
-# 1. Определение исходного аудио файла
+# 1. Определение исходного аудио файла и конфигурации
 # ============================================================
 
+CONFIG_FILE=""
 AUDIO_FILE=""
+FROM_CONFIG=false
 
 if [ $# -ge 1 ]; then
     ARG="$1"
     # Если аргумент — конфигурационный файл
     if [ -f "$ARG" ] && [[ "$ARG" == *.conf ]]; then
-        source "$ARG"
-        if [ -n "${AUDIO_FILE:-}" ]; then
-            # Конфиг указан, AUDIO_FILE из него
-            :
-        fi
+        CONFIG_FILE="$ARG"
+        source "$CONFIG_FILE"
+        FROM_CONFIG=true
     elif [ -f "$ARG" ]; then
         # Явно передан аудио файл
         AUDIO_FILE="$ARG"
@@ -66,7 +66,7 @@ fi
 # 2. Настройка параметров пайплайна
 # ============================================================
 
-# Базовые настройки (можно переопределить в конфиге)
+# Базовые настройки (можно переопределить в конфиге или интерактивно)
 BASE_DIR="${BASE_DIR:-pipelines_audio_video/$(basename "${AUDIO_FILE%.*}")}"
 TITLE="${TITLE:-$(basename "${AUDIO_FILE%.*}")}"
 LANGUAGE="${LANGUAGE:-ru}"
@@ -75,33 +75,72 @@ STYLE="${STYLE:-Реалистичный}"
 SECONDS_PER_ILLUSTRATION="${SECONDS_PER_ILLUSTRATION:-20}"
 
 OUTPUT_DIR="$BASE_DIR"
-mkdir -p "$OUTPUT_DIR"
+CONFIG_PATH="$OUTPUT_DIR/pipeline.conf"
+
+# Если конфиг пайплайна уже существует — загружаем из него
+if [ -f "$CONFIG_PATH" ] && [ "$FROM_CONFIG" = false ]; then
+    echo "📂 Найден конфиг пайплайна: $CONFIG_PATH"
+    source "$CONFIG_PATH"
+    OUTPUT_DIR="$BASE_DIR"
+fi
+
+# Если запущен без конфига — предлагаем отредактировать параметры
+if [ "$FROM_CONFIG" = false ]; then
+    echo ""
+    echo "⚙️  Параметры пайплайна:"
+    echo "  [1] TITLE:                       $TITLE"
+    echo "  [2] LANGUAGE:                     $LANGUAGE"
+    echo "  [3] SEGMENTS_COUNT:              $SEGMENTS_COUNT"
+    echo "  [4] STYLE:                       $STYLE"
+    echo "  [5] SECONDS_PER_ILLUSTRATION:    $SECONDS_PER_ILLUSTRATION"
+    echo "  [6] BASE_DIR:                    $BASE_DIR"
+    echo ""
+    read -p "Изменить параметры? (y/n): " edit_params
+    if [[ "$edit_params" =~ ^[Yy] ]]; then
+        read -p "  TITLE [$TITLE]: " new_val; TITLE="${new_val:-$TITLE}"
+        read -p "  LANGUAGE [$LANGUAGE]: " new_val; LANGUAGE="${new_val:-$LANGUAGE}"
+        read -p "  SEGMENTS_COUNT [$SEGMENTS_COUNT]: " new_val; SEGMENTS_COUNT="${new_val:-$SEGMENTS_COUNT}"
+        read -p "  STYLE [$STYLE]: " new_val; STYLE="${new_val:-$STYLE}"
+        read -p "  SECONDS_PER_ILLUSTRATION [$SECONDS_PER_ILLUSTRATION]: " new_val; SECONDS_PER_ILLUSTRATION="${new_val:-$SECONDS_PER_ILLUSTRATION}"
+        read -p "  BASE_DIR [$BASE_DIR]: " new_val; BASE_DIR="${new_val:-$BASE_DIR}"
+        OUTPUT_DIR="$BASE_DIR"
+    fi
+
+    # Сохраняем конфиг пайплайна
+    mkdir -p "$OUTPUT_DIR"
+    mkdir -p "$OUTPUT_DIR/images"
+    cat > "$CONFIG_PATH" <<CONF
+AUDIO_FILE="$AUDIO_FILE"
+BASE_DIR="$BASE_DIR"
+TITLE="$TITLE"
+LANGUAGE="$LANGUAGE"
+SEGMENTS_COUNT="$SEGMENTS_COUNT"
+STYLE="$STYLE"
+SECONDS_PER_ILLUSTRATION="$SECONDS_PER_ILLUSTRATION"
+CONF
+    echo "✅ Конфиг сохранён: $CONFIG_PATH"
+else
+    mkdir -p "$OUTPUT_DIR"
+    mkdir -p "$OUTPUT_DIR/images"
+fi
+
+# Пересчитываем OUTPUT_DIR после возможного изменения BASE_DIR
+OUTPUT_DIR="$BASE_DIR"
 mkdir -p "$OUTPUT_DIR/images"
 
 # Копируем аудио в каталог пайплайна (конвертируем m4a → mp3 если нужно)
-if [[ "$AUDIO_FILE" == *.m4a ]]; then
-    PIPELINE_AUDIO="$OUTPUT_DIR/audio.mp3"
-    if [ ! -f "$PIPELINE_AUDIO" ]; then
-        echo "🔄 Конвертация m4a → mp3..."
-        ffmpeg -y -i "$AUDIO_FILE" -vn -c:a libmp3lame -q:a 2 "$PIPELINE_AUDIO" 2>/dev/null
-        echo "✅ Аудио сконвертировано: $PIPELINE_AUDIO"
-    else
-        echo "✅ Аудио уже сконвертировано"
-    fi
-elif [[ "$AUDIO_FILE" == *.mp3 ]]; then
-    PIPELINE_AUDIO="$OUTPUT_DIR/audio.mp3"
-    if [ ! -f "$PIPELINE_AUDIO" ]; then
+PIPELINE_AUDIO="$OUTPUT_DIR/audio.mp3"
+if [ ! -f "$PIPELINE_AUDIO" ]; then
+    if [[ "$AUDIO_FILE" == *.mp3 ]]; then
         cp "$AUDIO_FILE" "$PIPELINE_AUDIO"
         echo "✅ Аудио скопировано: $PIPELINE_AUDIO"
     else
-        echo "✅ Аудио уже на месте"
-    fi
-else
-    PIPELINE_AUDIO="$OUTPUT_DIR/audio.mp3"
-    if [ ! -f "$PIPELINE_AUDIO" ]; then
+        echo "🔄 Конвертация → mp3..."
         ffmpeg -y -i "$AUDIO_FILE" -vn -c:a libmp3lame -q:a 2 "$PIPELINE_AUDIO" 2>/dev/null
         echo "✅ Аудио сконвертировано: $PIPELINE_AUDIO"
     fi
+else
+    echo "✅ Аудио уже на месте"
 fi
 
 TIMESTAMPS_FILE="$OUTPUT_DIR/sentence_timestamps.json"
@@ -119,6 +158,8 @@ echo "  Аудио:   $AUDIO_FILE"
 echo "  Длительность: ${AUDIO_DURATION} сек"
 echo "  Каталог: $OUTPUT_DIR"
 echo "  Тема:    $TITLE"
+echo "  Стиль:   $STYLE"
+echo "  Иллюстраций: ~$(python3 -c "print(max(4, int(${AUDIO_DURATION} / ${SECONDS_PER_ILLUSTRATION})))" 2>/dev/null || echo "?") шт. (по ${SECONDS_PER_ILLUSTRATION}с)"
 echo ""
 
 # ============================================================
@@ -195,6 +236,7 @@ fi
 # ============================================================
 
 SEGMENTS_JSON="$OUTPUT_DIR/segments.json"
+regen_seg="n"
 
 if [ -f "$SEGMENTS_JSON" ]; then
     echo ""
@@ -220,14 +262,12 @@ fi
 # ============================================================
 
 ILLUSTRATIONS_JSON="$OUTPUT_DIR/illustrations.json"
+regen_prompts="n"
 
 if [ -f "$ILLUSTRATIONS_JSON" ]; then
     echo ""
     echo "✅ Промпты иллюстраций найдены."
     read -p "Перегенерировать промпты? (y/n): " regen_prompts
-    if [[ ! "$regen_prompts" =~ ^[Yy] ]]; then
-        ILLUSTRATION_COUNT=$(python3 -c "import json; d=json.load(open('$ILLUSTRATIONS_JSON')); print(len(d.get('illustrations',[])))" 2>/dev/null || echo "?")
-    fi
 fi
 
 if [ ! -f "$ILLUSTRATIONS_JSON" ] || [[ "$regen_prompts" =~ ^[Yy] ]]; then
@@ -272,7 +312,7 @@ if [ "$img_choice" = "2" ]; then
     fi
 
     # Текущее количество изображений (чтобы продолжить нумерацию)
-    count=$(ls -1 "$OUTPUT_DIR/images/illustration_"*.png 2>/dev/null | wc -l)
+    count=$(find "$OUTPUT_DIR/images" -maxdepth 1 -name 'illustration_*.png' 2>/dev/null | wc -l)
     count=$((count))
 
     # Печатаем промпт для чата + копируем в буфер обмена
@@ -357,7 +397,7 @@ $ILLUSTRATIONS_TEXT"
             file_mask="${file_mask:-*.png}"
 
             IFS=$'\n'
-            found_files=($(ls -1v ~/Downloads/$file_mask 2>/dev/null))
+            found_files=($(ls -1v ~/Downloads/$file_mask 2>/dev/null || true))
             unset IFS
             fc=${#found_files[@]}
 
@@ -369,7 +409,7 @@ $ILLUSTRATIONS_TEXT"
             read -p "Переместить в $OUTPUT_DIR/images/? (y/n): " do_copy
             if [[ "$do_copy" =~ ^[Yy] ]]; then
                 IFS=$'\n'
-                for file in $(ls -1v ~/Downloads/$file_mask); do
+                for file in $(ls -1v ~/Downloads/$file_mask 2>/dev/null || true); do
                     new_name=$(printf "illustration_%02d.png" "$count")
                     mv "$file" "$OUTPUT_DIR/images/$new_name"
                     echo "  $(basename "$file") -> $new_name"
@@ -382,7 +422,7 @@ $ILLUSTRATIONS_TEXT"
     fi
 
     # Итого
-    final_count=$(ls -1 "$OUTPUT_DIR/images/illustration_"*.png 2>/dev/null | wc -l)
+    final_count=$(find "$OUTPUT_DIR/images" -maxdepth 1 -name 'illustration_*.png' 2>/dev/null | wc -l)
     final_count=$((final_count))
     echo ""
     echo "📥 Итого изображений в images/: $final_count"
