@@ -379,9 +379,9 @@ $ILLUSTRATIONS_TEXT"
         read -r -p "Нажмите [Enter] когда закончите скачивание: "
 
         # Убиваем всю группу фоновых процессов (inotifywait + while)
-        pkill -P "$WATCH_PID" 2>/dev/null
-        kill "$WATCH_PID" 2>/dev/null
-        wait "$WATCH_PID" 2>/dev/null
+        pkill -P "$WATCH_PID" 2>/dev/null || true
+        kill "$WATCH_PID" 2>/dev/null || true
+        wait "$WATCH_PID" 2>/dev/null || true
         rm -f "$COUNTER_FILE"
         echo ""
         echo "✅ Мониторинг остановлен."
