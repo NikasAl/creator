@@ -257,7 +257,69 @@ ARTICLE_INSTRUCTIONS=""          # Файл с дополнительными и
 
 ---
 
-### 7. 🎸 Музыкальные клипы с Manim
+### 7. 🎙️ Аудио → Видео (Audio to Video)
+
+Создание видео с иллюстрациями из готового аудио файла. Идеально для NotebookLM подкастов, интервью, записей обсуждений — когда есть готовая аудио дорожка и нужно добавить визуальный ряд.
+
+**Пайплайн:**
+```
+Аудио (mp3/m4a) → Транскрибация → Сегментация → Промпты иллюстраций → Скачивание/AI → Видео
+```
+
+**Использование:**
+```bash
+# Интерактивный выбор файла через fzf (mp3/m4a из ~/Downloads)
+./process_audio_video.sh
+
+# Явное указание аудио файла
+./process_audio_video.sh /path/to/podcast.mp3
+
+# С конфигурационным файлом
+./process_audio_video.sh configs/audio_video/example.conf
+```
+
+**Особенности:**
+- Интерактивный выбор аудио через **fzf** — ищет mp3/m4a в `~/Downloads` с предпросмотром длительности
+- Автоматическая конвертация m4a → mp3 при необходимости
+- Выбор транскрибатора: Whisper или WhisperX (wav2vec2 alignment)
+- Тематическая сегментация текста через LLM с привязкой к таймстемпам
+- Генерация промптов иллюстраций на основе «Библии» сущностей
+- Поддержка внешнего сервиса: промпты копируются в буфер обмена, inotifywait мониторит `~/Downloads/` для автоматического перемещения скачанных изображений
+- Альтернативная AI-генерация иллюстраций (FLUX/Alibaba Cloud)
+- Сборка финального видео с эффектами фото-движения (zoom in/out)
+
+**Параметры конфигурации:**
+```bash
+# configs/audio_video/example.conf
+# AUDIO_FILE="/path/to/podcast.mp3"  # опционально — иначе fzf
+BASE_DIR="pipelines_audio_video/my_podcast"
+TITLE="Мой подкаст"
+LANGUAGE="ru"
+SEGMENTS_COUNT="10"
+STYLE="Реалистичный"
+SECONDS_PER_ILLUSTRATION="20"
+```
+
+**Структура файлов пайплайна:**
+```
+pipelines_audio_video/my_podcast/
+├── audio.mp3                   # Аудио дорожка (сконвертированная)
+├── sentence_timestamps.json    # Таймстампы транскрибации
+├── transcript.txt              # Извлечённый текст
+├── segments.json               # Тематические сегменты
+├── illustrations.json          # Промпты для иллюстраций
+├── bible.json                  # Библия сущностей
+├── images/
+│   ├── illustration_00.png
+│   ├── illustration_01.png
+│   └── ...
+├── video.mp4                   # Финальное видео
+└── cover.jpg                   # Обложка (опционально)
+```
+
+---
+
+### 8. 🎸 Музыкальные клипы с Manim
 
 Создание музыкальных клипов с визуализацией текста через Manim.
 
@@ -273,7 +335,7 @@ ARTICLE_INSTRUCTIONS=""          # Файл с дополнительными и
 
 ---
 
-### 8. 📤 Публикация
+### 9. 📤 Публикация
 
 Автоматическая публикация видео на видеохостинги.
 
@@ -351,6 +413,11 @@ pip install openai-whisper
 pip install yt-dlp
 ```
 
+**Для пайплайна Audio → Video (fzf + inotifywait):**
+```bash
+sudo apt install fzf inotify-tools xclip
+```
+
 ### 5. Настройка конфигурации
 
 ```bash
@@ -409,6 +476,7 @@ VK_GROUP_ID=your_group_id  # опционально
 - `configs/manim/` — Manim-уроки
 - `configs/vd/` — пересказы видео
 - `configs/poetry/` — поэзия и песни
+- `configs/audio_video/` — аудио → видео (NotebookLM подкасты)
 - `configs/chat/` — чаты
 
 ---
@@ -423,6 +491,7 @@ VK_GROUP_ID=your_group_id  # опционально
 # Запуск с интерактивным созданием конфигурации
 ./process_poetry.sh
 ./process_vd.sh
+./process_audio_video.sh          # fzf выбор mp3/m4a из ~/Downloads
 ./setup_manim_pipeline.sh
 ```
 
@@ -476,7 +545,8 @@ creator/
 ├── process_poetry.sh           # Пайплайн поэзии/песен
 ├── process_manim.sh            # Пайплайн Manim-уроков
 ├── process_vd.sh               # Пайплайн пересказа видео
-├── process_podcast.sh          # Пайплайн подкастов
+├── process_podcast.sh          # Пайплайн подкастов (записи + TTS)
+├── process_audio_video.sh      # Пайплайн: готовое аудио → видео с иллюстрациями
 ├── process_chat.sh             # Пайплайн чатов
 ├── process_manim_song.sh       # Пайплайн музыкальных клипов Manim
 ├── run_pipeline.sh             # Универсальный пайплайн аудиокниг
@@ -529,7 +599,8 @@ creator/
 ├── audio_processors/           # Обработка аудио
 │   ├── audio_transcriber.py
 │   ├── free_transcriber.py
-│   └── sentence_transcriber.py
+│   ├── sentence_transcriber.py
+│   └── sentence_transcriber_whisperx.py
 │
 ├── image_generators/           # Генерация изображений
 │   ├── make_cover.py           # Создание обложек
@@ -559,6 +630,7 @@ creator/
 │   ├── manim/
 │   ├── vd/
 │   ├── poetry/
+│   ├── audio_video/
 │   └── chat/
 │
 ├── specs/                      # Документация
@@ -600,6 +672,7 @@ creator/
 ### Транскрибация
 
 - **Whisper** (локально или через API) — основное решение
+- **WhisperX** (Whisper + wav2vec2 forced alignment) — повышенная точность ~50мс на слово
 - **OpenRouter** — для файлов до 25MB
 - **Hugging Face** — бесплатные модели
 
